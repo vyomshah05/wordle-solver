@@ -29,16 +29,14 @@ wordle/
 ├── ui.py        # pygame rendering and event loop
 └── words.py     # word-list loading
 data/
-├── answers.txt  # ~2,300 answer-eligible Wordle words (the secret-word pool)
-└── allowed.txt  # ~10,600 additional valid-but-never-an-answer guesses
+└── allowed.txt  # ~13,000 valid 5-letter Wordle guesses (any one can be the answer)
 ```
 
 ## Word list
 
-The official NYT Wordle word lists are bundled. `answers.txt` and `allowed.txt`
-are disjoint — `wordle.words.load_valid_guesses()` returns their union, so any
-of the ~13,000 valid Wordle guesses is accepted from the keyboard, while the
-secret word is always drawn from the smaller answer pool.
+The full official NYT Wordle guess list is bundled in `data/allowed.txt`. Every
+word in that file is accepted as a guess **and** is in the secret-word pool, so
+the answer can be any of the ~13,000 valid 5-letter words.
 
 ## Plugging in a model
 

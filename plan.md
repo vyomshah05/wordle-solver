@@ -29,9 +29,9 @@ wordle-solver/
 │   ├── game.py                  # WordleGame, GuessResult, LetterState (Enum)
 │   ├── players.py               # Player (ABC), HumanPlayer, ModelPlayer (stub)
 │   ├── ui.py                    # pygame rendering + event loop
-│   └── words.py                 # load_answers(), load_valid_guesses()
+│   └── words.py                 # load_words()
 └── data/
-    └── answers.txt              # ~500 common 5-letter words (also used as guess list)
+    └── allowed.txt              # ~13,000 valid 5-letter words (any one can be the answer)
 ```
 
 ### Game logic (`wordle/game.py`)
@@ -65,8 +65,8 @@ class Player(ABC):
 
 ### Word list
 
-- Hand-curated ~500 common 5-letter English words in `data/answers.txt`.
-- Doubles as the allowed-guesses list for v1.
+- Full official NYT Wordle guess list in `data/allowed.txt` (~13,000 words).
+- Any word in the list can be the secret answer **and** is a valid guess.
 
 ### Entry point
 

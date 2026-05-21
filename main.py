@@ -4,7 +4,7 @@ import argparse
 
 from wordle.players import HumanPlayer, ModelPlayer
 from wordle.ui import WordleUI
-from wordle.words import load_answers, load_valid_guesses
+from wordle.words import load_words
 
 
 def main() -> None:
@@ -17,12 +17,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    answers = load_answers()
-    allowed = load_valid_guesses()
-    if not answers:
-        raise SystemExit("No answer words found in data/answers.txt")
+    words = load_words()
+    if not words:
+        raise SystemExit("No words found in data/allowed.txt")
 
-    ui = WordleUI(answers=answers, allowed_words=allowed)
+    ui = WordleUI(answers=words, allowed_words=set(words))
 
     if args.player == "model":
         # Surface the not-implemented error early instead of waiting for a click.
