@@ -209,6 +209,9 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# RL training artifacts
+rl/checkpoints/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
