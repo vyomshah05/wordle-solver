@@ -1,49 +1,36 @@
 # wordle-solver
 
-A Python + pygame Wordle simulator with a pluggable Player seam, built as the
-foundation for an LLM-driven Wordle solver.
+Wordle simulator (pygame) with pluggable solvers.
 
 ## Run
 
-```
+```bash
 pip install -r requirements.txt
-python main.py
+python main.py                  # human play
+python main.py --player model1  # start as Model 1
+python benchmark.py --limit 500 # benchmark Model 1
 ```
 
-## Controls
-
-- Type a 5-letter word, press **Enter** to submit.
-- **Backspace** to delete a letter.
-- **R** to start a new game with a new random answer.
-- **Esc** to quit.
-- Click the **Player: Human / Model** button in the header to toggle who is
-  guessing. Model mode currently shows a "not wired yet" toast — the LLM is the
-  next step.
+Use the **Player** dropdown (top-right) to switch between Human, Model 1, and future models.
 
 ## Layout
 
 ```
+main.py              # entry point
+benchmark.py         # benchmark Model 1
 wordle/
-├── game.py      # rules, scoring, history (pure logic, easy to test/feed a solver)
-├── players.py   # Player ABC + HumanPlayer + ModelPlayer stub
-├── ui.py        # pygame rendering and event loop
-└── words.py     # word-list loading
-data/
-└── allowed.txt  # ~13,000 valid 5-letter Wordle guesses (any one can be the answer)
+  game.py            # Wordle rules + scoring
+  words.py           # load data/allowed.txt
+  players.py         # Human player + dropdown list + make_player()
+  ui.py              # pygame UI
+  solvers/
+    model1.py        # Model 1 solver + player (all in one file)
+    model2.py        # (your teammate adds this)
+    model3.py        # (your teammate adds this)
+data/allowed.txt
 ```
 
-## Word list
+## Adding Model 2 or 3
 
-The full official NYT Wordle guess list is bundled in `data/allowed.txt`. Every
-word in that file is accepted as a guess **and** is in the secret-word pool, so
-the answer can be any of the ~13,000 valid 5-letter words.
-
-## Plugging in a model
-
-The solver lands by:
-
-1. Implementing `ModelPlayer` in [wordle/players.py](wordle/players.py) so its
-   constructor stops raising and `tick(game)` returns a guess string when the
-   model is ready to commit one.
-2. The UI already calls `active_player.tick(...)` every frame and submits any
-   non-`None` return, so no UI changes should be needed.
+1. Add `wordle/solvers/model2.py` with a `Player` class and solver logic.
+2. In `players.py`, set `("model2", "Model 2", True)` and add one line to `make_player()`.

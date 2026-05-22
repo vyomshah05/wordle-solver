@@ -6,8 +6,7 @@ from dataclasses import dataclass
 import pygame
 
 from .game import GuessResult, InvalidGuess, LetterState, WordleGame, keyboard_state
-from .player_select import PlayerChoice, choice_by_id, create_player, list_choices
-from .players import HumanPlayer, Player
+from .players import PLAYER_MODES, HumanPlayer, Player, make_player
 
 # --- Layout ---
 WINDOW_W, WINDOW_H = 500, 760
@@ -98,7 +97,7 @@ class WordleUI:
         self.selected_player_id = "human"
         self.player_menu_open = False
         self.dropdown_rect = pygame.Rect(WINDOW_W - 168, 14, 153, 32)
-        self._menu_hitboxes: list[tuple[pygame.Rect, PlayerChoice]] = []
+        self._menu_hitboxes: list[tuple[pygame.Rect, tuple[str, str, bool]]] = []
         self._solver_players: dict[str, Player] = {}
         self._key_rects: list[tuple[pygame.Rect, str]] = []
 
@@ -117,28 +116,25 @@ class WordleUI:
     def _toast(self, text: str) -> None:
         self.toast = Toast(text=text, expires_at=pygame.time.get_ticks() + TOAST_DURATION_MS)
 
-    def set_player(self, choice_id: str) -> None:
-        choice = choice_by_id(choice_id)
-        if choice is None:
-            raise ValueError(f"Unknown player: {choice_id!r}")
-        if not choice.available:
-            raise ValueError(f"Player not available: {choice.label}")
-        self.selected_player_id = choice_id
+    def set_player(self, mode_id: str) -> None:
+        mode = next((m for m in PLAYER_MODES if m[0] == mode_id), None)
+        if mode is None or not mode[2]:
+            raise ValueError(f"Player not available: {mode_id!r}")
+        self.selected_player_id = mode_id
         self.player_menu_open = False
-        if choice_id == "human":
+        if mode_id == "human":
             self.active_player = self.human
         else:
-            if choice_id not in self._solver_players:
-                self._solver_players[choice_id] = create_player(choice_id, self.answers)
-            self.active_player = self._solver_players[choice_id]
+            if mode_id not in self._solver_players:
+                self._solver_players[mode_id] = make_player(mode_id, self.answers)
+            self.active_player = self._solver_players[mode_id]
 
     def _menu_rect(self) -> pygame.Rect:
-        choices = list_choices()
         return pygame.Rect(
             self.dropdown_rect.x,
             self.dropdown_rect.bottom + 2,
             self.dropdown_rect.width,
-            len(choices) * MENU_ITEM_H,
+            len(PLAYER_MODES) * MENU_ITEM_H,
         )
 
     def _handle_player_dropdown_click(self, pos: tuple[int, int]) -> bool:
@@ -146,14 +142,12 @@ class WordleUI:
         dropdown_area = self.dropdown_rect.union(menu_rect) if self.player_menu_open else self.dropdown_rect
 
         if self.player_menu_open:
-            for rect, choice in self._menu_hitboxes:
+            for rect, (mode_id, label, available) in self._menu_hitboxes:
                 if rect.collidepoint(pos):
-                    if choice.available:
-                        self.set_player(choice.id)
+                    if available:
+                        self.set_player(mode_id)
                         self._toast(
-                            f"{choice.label} — watch it play"
-                            if choice.id != "human"
-                            else "Human mode"
+                            f"{label} — watch it play" if mode_id != "human" else "Human mode"
                         )
                     return True
             if not dropdown_area.collidepoint(pos):
@@ -277,8 +271,7 @@ class WordleUI:
         pygame.draw.rect(self.screen, bg, self.dropdown_rect, border_radius=6)
         pygame.draw.rect(self.screen, BUTTON_BORDER, self.dropdown_rect, 1, border_radius=6)
 
-        choice = choice_by_id(self.selected_player_id)
-        label = f"Player: {choice.label if choice else self.active_player.name}"
+        label = f"Player: {self.active_player.name}"
         text_color = (255, 255, 255) if is_model else TEXT
         text = self.font_small.render(label, True, text_color)
         text_rect = text.get_rect(midleft=(self.dropdown_rect.x + 10, self.dropdown_rect.centery))
@@ -298,19 +291,20 @@ class WordleUI:
         pygame.draw.rect(self.screen, BUTTON_BORDER, menu_rect, 1, border_radius=6)
 
         self._menu_hitboxes = []
-        for i, option in enumerate(list_choices()):
+        for i, mode in enumerate(PLAYER_MODES):
+            mode_id, mode_label, available = mode
             item_rect = pygame.Rect(
                 menu_rect.x,
                 menu_rect.y + i * MENU_ITEM_H,
                 menu_rect.width,
                 MENU_ITEM_H,
             )
-            self._menu_hitboxes.append((item_rect, option))
+            self._menu_hitboxes.append((item_rect, mode))
 
-            if option.id == self.selected_player_id:
+            if mode_id == self.selected_player_id:
                 item_bg = BUTTON_BG_ACTIVE
                 item_color = (255, 255, 255)
-            elif option.available:
+            elif available:
                 item_bg = BUTTON_BG
                 item_color = TEXT
             else:
@@ -327,8 +321,8 @@ class WordleUI:
                     1,
                 )
 
-            suffix = "" if option.available else " (soon)"
-            item_text = self.font_small.render(option.label + suffix, True, item_color)
+            suffix = "" if available else " (soon)"
+            item_text = self.font_small.render(mode_label + suffix, True, item_color)
             self.screen.blit(
                 item_text,
                 item_text.get_rect(midleft=(item_rect.x + 10, item_rect.centery)),
