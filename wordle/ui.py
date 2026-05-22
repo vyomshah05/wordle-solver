@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import pygame
 
 from .game import GuessResult, InvalidGuess, LetterState, WordleGame, keyboard_state
-from .players import HumanPlayer, ModelPlayer, Player
+from .players import HumanPlayer, Player
+from .solvers.model1.player import FrequencyPlayer
 
 # --- Layout ---
 WINDOW_W, WINDOW_H = 500, 760
@@ -52,6 +53,8 @@ STATE_COLORS = {
 REVEAL_PER_TILE_MS = 250
 SHAKE_DURATION_MS = 350
 TOAST_DURATION_MS = 1500
+# Wait for tile reveal before the solver submits its next guess.
+MODEL_GUESS_PAUSE_MS = 400
 
 
 @dataclass
@@ -90,7 +93,8 @@ class WordleUI:
         self.shake: Shake | None = None
         self.toast: Toast | None = None
 
-        self.toggle_rect = pygame.Rect(WINDOW_W - 150, 14, 135, 32)
+        self.toggle_rect = pygame.Rect(WINDOW_W - 168, 14, 153, 32)
+        self._model_player = FrequencyPlayer(answers)
         self._key_rects: list[tuple[pygame.Rect, str]] = []
 
     # --- Game lifecycle ---
@@ -111,15 +115,18 @@ class WordleUI:
     # --- Player toggle ---
     def _toggle_player(self) -> None:
         if isinstance(self.active_player, HumanPlayer):
-            try:
-                self.active_player = ModelPlayer()
-                self._toast("Model mode (not wired yet)")
-            except NotImplementedError as e:
-                self._toast("Model not available yet")
-                self.active_player = self.human
+            self.active_player = self._model_player
+            self._toast("Model 1 — watch it play")
         else:
             self.active_player = self.human
             self._toast("Human mode")
+
+    def _model_ready_to_guess(self) -> bool:
+        if self.last_submit_at is None:
+            return True
+        reveal_ms = WordleGame.WORD_LENGTH * REVEAL_PER_TILE_MS
+        elapsed = pygame.time.get_ticks() - self.last_submit_at
+        return elapsed >= reveal_ms + MODEL_GUESS_PAUSE_MS
 
     # --- Main loop ---
     def run(self) -> None:
@@ -153,11 +160,11 @@ class WordleUI:
                 if not self.game.is_over:
                     self._dispatch_to_player(event)
 
-            # Autonomous tick (will be relevant once a model is wired up)
-            if not self.game.is_over:
-                guess = self.active_player.tick(self.game)
-                if guess is not None:
-                    self._try_submit(guess)
+            if not self.game.is_over and not isinstance(self.active_player, HumanPlayer):
+                if self._model_ready_to_guess():
+                    guess = self.active_player.tick(self.game)
+                    if guess is not None:
+                        self._try_submit(guess)
 
             self._draw()
             pygame.display.flip()
@@ -194,7 +201,8 @@ class WordleUI:
 
         self.last_submit_at = pygame.time.get_ticks()
         if self.game.is_won:
-            self._toast("You got it!")
+            won_by = "Model 1 solved it!" if not isinstance(self.active_player, HumanPlayer) else "You got it!"
+            self._toast(won_by)
         elif self.game.is_lost:
             self._toast(f"The word was: {self.game.answer.upper()}")
 

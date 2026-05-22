@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from wordle.players import HumanPlayer, ModelPlayer
+from wordle.players import HumanPlayer
+from wordle.solvers.model1.player import FrequencyPlayer
 from wordle.ui import WordleUI
 from wordle.words import load_words
 
@@ -11,9 +12,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Wordle visual simulator")
     parser.add_argument(
         "--player",
-        choices=("human", "model"),
+        choices=("human", "model1"),
         default="human",
-        help="Initial player. The on-screen button toggles between them at runtime.",
+        help="Initial player. The on-screen button toggles Human ↔ Model 1 at runtime.",
     )
     args = parser.parse_args()
 
@@ -23,9 +24,8 @@ def main() -> None:
 
     ui = WordleUI(answers=words, allowed_words=set(words))
 
-    if args.player == "model":
-        # Surface the not-implemented error early instead of waiting for a click.
-        ui.active_player = ModelPlayer()
+    if args.player == "model1":
+        ui.active_player = FrequencyPlayer(words)
     else:
         ui.active_player = HumanPlayer()
         ui.human = ui.active_player  # type: ignore[assignment]
