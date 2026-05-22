@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import pygame
 
 from .game import GuessResult, InvalidGuess, LetterState, WordleGame, keyboard_state
+from .player_select import PlayerChoice, choice_by_id, create_player, list_choices
 from .players import HumanPlayer, Player
-from .solvers.model1.player import FrequencyPlayer
 
 # --- Layout ---
 WINDOW_W, WINDOW_H = 500, 760
@@ -43,6 +43,8 @@ TOAST_BG = (26, 26, 27)
 BUTTON_BG = (240, 240, 240)
 BUTTON_BG_ACTIVE = (106, 170, 100)
 BUTTON_BORDER = (180, 180, 180)
+MENU_DISABLED_BG = (245, 245, 245)
+MENU_ITEM_H = 28
 
 STATE_COLORS = {
     LetterState.CORRECT: COLOR_CORRECT,
@@ -93,8 +95,11 @@ class WordleUI:
         self.shake: Shake | None = None
         self.toast: Toast | None = None
 
-        self.toggle_rect = pygame.Rect(WINDOW_W - 168, 14, 153, 32)
-        self._model_player = FrequencyPlayer(answers)
+        self.selected_player_id = "human"
+        self.player_menu_open = False
+        self.dropdown_rect = pygame.Rect(WINDOW_W - 168, 14, 153, 32)
+        self._menu_hitboxes: list[tuple[pygame.Rect, PlayerChoice]] = []
+        self._solver_players: dict[str, Player] = {}
         self._key_rects: list[tuple[pygame.Rect, str]] = []
 
     # --- Game lifecycle ---
@@ -112,14 +117,53 @@ class WordleUI:
     def _toast(self, text: str) -> None:
         self.toast = Toast(text=text, expires_at=pygame.time.get_ticks() + TOAST_DURATION_MS)
 
-    # --- Player toggle ---
-    def _toggle_player(self) -> None:
-        if isinstance(self.active_player, HumanPlayer):
-            self.active_player = self._model_player
-            self._toast("Model 1 — watch it play")
-        else:
+    def set_player(self, choice_id: str) -> None:
+        choice = choice_by_id(choice_id)
+        if choice is None:
+            raise ValueError(f"Unknown player: {choice_id!r}")
+        if not choice.available:
+            raise ValueError(f"Player not available: {choice.label}")
+        self.selected_player_id = choice_id
+        self.player_menu_open = False
+        if choice_id == "human":
             self.active_player = self.human
-            self._toast("Human mode")
+        else:
+            if choice_id not in self._solver_players:
+                self._solver_players[choice_id] = create_player(choice_id, self.answers)
+            self.active_player = self._solver_players[choice_id]
+
+    def _menu_rect(self) -> pygame.Rect:
+        choices = list_choices()
+        return pygame.Rect(
+            self.dropdown_rect.x,
+            self.dropdown_rect.bottom + 2,
+            self.dropdown_rect.width,
+            len(choices) * MENU_ITEM_H,
+        )
+
+    def _handle_player_dropdown_click(self, pos: tuple[int, int]) -> bool:
+        menu_rect = self._menu_rect()
+        dropdown_area = self.dropdown_rect.union(menu_rect) if self.player_menu_open else self.dropdown_rect
+
+        if self.player_menu_open:
+            for rect, choice in self._menu_hitboxes:
+                if rect.collidepoint(pos):
+                    if choice.available:
+                        self.set_player(choice.id)
+                        self._toast(
+                            f"{choice.label} — watch it play"
+                            if choice.id != "human"
+                            else "Human mode"
+                        )
+                    return True
+            if not dropdown_area.collidepoint(pos):
+                self.player_menu_open = False
+            return True
+
+        if self.dropdown_rect.collidepoint(pos):
+            self.player_menu_open = True
+            return True
+        return False
 
     def _model_ready_to_guess(self) -> bool:
         if self.last_submit_at is None:
@@ -151,8 +195,10 @@ class WordleUI:
                     continue
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if self.toggle_rect.collidepoint(event.pos):
-                        self._toggle_player()
+                    if self._handle_player_dropdown_click(event.pos):
+                        continue
+                    if self.player_menu_open:
+                        self.player_menu_open = False
                         continue
                     if self._handle_key_click(event.pos):
                         continue
@@ -201,7 +247,11 @@ class WordleUI:
 
         self.last_submit_at = pygame.time.get_ticks()
         if self.game.is_won:
-            won_by = "Model 1 solved it!" if not isinstance(self.active_player, HumanPlayer) else "You got it!"
+            won_by = (
+                f"{self.active_player.name} solved it!"
+                if not isinstance(self.active_player, HumanPlayer)
+                else "You got it!"
+            )
             self._toast(won_by)
         elif self.game.is_lost:
             self._toast(f"The word was: {self.game.answer.upper()}")
@@ -213,6 +263,7 @@ class WordleUI:
         self._draw_board()
         self._draw_keyboard()
         self._draw_status()
+        self._draw_player_dropdown()
         self._draw_toast()
 
     def _draw_header(self) -> None:
@@ -220,15 +271,68 @@ class WordleUI:
         title = self.font_title.render("Wordle", True, TEXT)
         self.screen.blit(title, title.get_rect(center=(WINDOW_W // 2, HEADER_H // 2)))
 
-        # Toggle button
+    def _draw_player_dropdown(self) -> None:
         is_model = not isinstance(self.active_player, HumanPlayer)
         bg = BUTTON_BG_ACTIVE if is_model else BUTTON_BG
-        pygame.draw.rect(self.screen, bg, self.toggle_rect, border_radius=6)
-        pygame.draw.rect(self.screen, BUTTON_BORDER, self.toggle_rect, 1, border_radius=6)
-        label = f"Player: {self.active_player.name}"
+        pygame.draw.rect(self.screen, bg, self.dropdown_rect, border_radius=6)
+        pygame.draw.rect(self.screen, BUTTON_BORDER, self.dropdown_rect, 1, border_radius=6)
+
+        choice = choice_by_id(self.selected_player_id)
+        label = f"Player: {choice.label if choice else self.active_player.name}"
         text_color = (255, 255, 255) if is_model else TEXT
         text = self.font_small.render(label, True, text_color)
-        self.screen.blit(text, text.get_rect(center=self.toggle_rect.center))
+        text_rect = text.get_rect(midleft=(self.dropdown_rect.x + 10, self.dropdown_rect.centery))
+        self.screen.blit(text, text_rect)
+
+        arrow = self.font_small.render("▼" if not self.player_menu_open else "▲", True, text_color)
+        self.screen.blit(
+            arrow,
+            arrow.get_rect(midright=(self.dropdown_rect.right - 8, self.dropdown_rect.centery)),
+        )
+
+        if not self.player_menu_open:
+            return
+
+        menu_rect = self._menu_rect()
+        pygame.draw.rect(self.screen, BG, menu_rect, border_radius=6)
+        pygame.draw.rect(self.screen, BUTTON_BORDER, menu_rect, 1, border_radius=6)
+
+        self._menu_hitboxes = []
+        for i, option in enumerate(list_choices()):
+            item_rect = pygame.Rect(
+                menu_rect.x,
+                menu_rect.y + i * MENU_ITEM_H,
+                menu_rect.width,
+                MENU_ITEM_H,
+            )
+            self._menu_hitboxes.append((item_rect, option))
+
+            if option.id == self.selected_player_id:
+                item_bg = BUTTON_BG_ACTIVE
+                item_color = (255, 255, 255)
+            elif option.available:
+                item_bg = BUTTON_BG
+                item_color = TEXT
+            else:
+                item_bg = MENU_DISABLED_BG
+                item_color = TEXT_MUTED
+
+            pygame.draw.rect(self.screen, item_bg, item_rect)
+            if i > 0:
+                pygame.draw.line(
+                    self.screen,
+                    BUTTON_BORDER,
+                    (item_rect.left + 6, item_rect.top),
+                    (item_rect.right - 6, item_rect.top),
+                    1,
+                )
+
+            suffix = "" if option.available else " (soon)"
+            item_text = self.font_small.render(option.label + suffix, True, item_color)
+            self.screen.blit(
+                item_text,
+                item_text.get_rect(midleft=(item_rect.x + 10, item_rect.centery)),
+            )
 
     def _draw_board(self) -> None:
         history = self.game.history

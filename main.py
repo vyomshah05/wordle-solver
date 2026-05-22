@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from wordle.players import HumanPlayer
-from wordle.solvers.model1.player import FrequencyPlayer
+from wordle.player_select import choice_by_id, list_choices
 from wordle.ui import WordleUI
 from wordle.words import load_words
 
@@ -12,9 +11,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Wordle visual simulator")
     parser.add_argument(
         "--player",
-        choices=("human", "model1"),
+        choices=tuple(c.id for c in list_choices() if c.available),
         default="human",
-        help="Initial player. The on-screen button toggles Human ↔ Model 1 at runtime.",
+        help="Initial player. Use the header dropdown to switch at runtime.",
     )
     args = parser.parse_args()
 
@@ -24,10 +23,11 @@ def main() -> None:
 
     ui = WordleUI(answers=words, allowed_words=set(words))
 
-    if args.player == "model1":
-        ui.active_player = FrequencyPlayer(words)
-    else:
-        ui.active_player = HumanPlayer()
+    initial = choice_by_id(args.player)
+    if initial is None or not initial.available:
+        raise SystemExit(f"Player {args.player!r} is not available.")
+    ui.set_player(args.player)
+    if args.player == "human":
         ui.human = ui.active_player  # type: ignore[assignment]
 
     ui.run()
