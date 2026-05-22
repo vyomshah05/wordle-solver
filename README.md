@@ -1,36 +1,43 @@
 # wordle-solver
 
-Wordle simulator (pygame) with pluggable solvers.
+Wordle simulator with three project models plus human play.
+
+| Model | ID | Code |
+|-------|-----|------|
+| **Model 1** — constraint + frequency baseline | `base_model` | `solvers/base_model.py` |
+| **Model 2** — entropy solver (primary) | `entropy` | `solvers/entropy.py` *(planned)* |
+| **Model 3** — reinforcement learning | `rl` | `rl/` |
 
 ## Run
 
 ```bash
 pip install -r requirements.txt
-python main.py                  # human play
-python main.py --player model1  # start as Model 1
-python benchmark.py --limit 500 # benchmark Model 1
+python main.py                           # human
+python main.py --player base_model       # Model 1
+python main.py --player rl               # Model 3
+python benchmark.py --limit 500          # benchmark Model 1
+python -m rl.evaluate --limit 500        # benchmark Model 3 (see rl/README.md)
 ```
 
-Use the **Player** dropdown (top-right) to switch between Human, Model 1, and future models.
+Use the **Player** dropdown (top-right) to switch during a session.
 
 ## Layout
 
 ```
-main.py              # entry point
-benchmark.py         # benchmark Model 1
-wordle/
-  game.py            # Wordle rules + scoring
-  words.py           # load data/allowed.txt
-  players.py         # Human player + dropdown list + make_player()
-  ui.py              # pygame UI
-  solvers/
-    model1.py        # Model 1 solver + player (all in one file)
-    model2.py        # (your teammate adds this)
-    model3.py        # (your teammate adds this)
+main.py
+benchmark.py
+wordle/                 # game + UI only
+  game.py  words.py  players.py  ui.py
+solvers/                # Models 1 & 2 (heuristic / search)
+  base_model.py         # Model 1
+  entropy.py            # Model 2 (teammate adds this)
+rl/                     # Model 3
 data/allowed.txt
 ```
 
-## Adding Model 2 or 3
+## Adding Model 2 (entropy)
 
-1. Add `wordle/solvers/model2.py` with a `Player` class and solver logic.
-2. In `players.py`, set `("model2", "Model 2", True)` and add one line to `make_player()`.
+1. Add `solvers/entropy.py` with solver + optional `Player` class.
+2. In `wordle/players.py`, set `("entropy", "Model 2: Entropy", True)` and add a `make_player` branch.
+
+Evaluation story: **random → Model 1 (base) → Model 2 (entropy) → Model 3 (RL)**.

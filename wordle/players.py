@@ -6,13 +6,12 @@ import pygame
 
 from wordle.game import WordleGame
 
-# id, label, available — flip available when model2/3 are ready
+# id, label, available — matches project: Model 1 / 2 / 3 (+ human for the UI)
 PLAYER_MODES: list[tuple[str, str, bool]] = [
     ("human", "Human", True),
-    ("model1", "Model 1", True),
-    ("rl", "RL", True),
-    ("model2", "Model 2", False),
-    ("model3", "Model 3", False),
+    ("base_model", "Model 1: Base", True),
+    ("entropy", "Model 2: Entropy", False),
+    ("rl", "Model 3: RL", True),
 ]
 
 
@@ -72,25 +71,12 @@ class HumanPlayer(Player):
 def make_player(mode_id: str, words: list[str], *, rl_checkpoint: str | None = None) -> Player:
     if mode_id == "human":
         return HumanPlayer()
+    if mode_id == "base_model":
+        from solvers.base_model import BaseModelPlayer
+
+        return BaseModelPlayer(words)
     if mode_id == "rl":
         from rl.player import RLPlayer
 
         return RLPlayer(words, checkpoint=rl_checkpoint)
-    if mode_id == "model1":
-        from wordle.solvers.model1 import FrequencySolver
-
-        solver = FrequencySolver(words)
-
-        class Model1Player(Player):
-            name = "Model 1"
-
-            def handle_event(self, event: pygame.event.Event, game: WordleGame) -> str | None:
-                return None
-
-            def tick(self, game: WordleGame) -> str | None:
-                if game.is_over:
-                    return None
-                return solver.next_guess(game.history)
-
-        return Model1Player()
     raise ValueError(f"Unknown player: {mode_id!r}")

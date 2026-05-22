@@ -1,11 +1,14 @@
-"""Model 1: filter by Wordle feedback, then pick the best positional-frequency guess."""
+"""Model 1 — constraint filter + positional letter-frequency scoring."""
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable
 
-from wordle.game import GuessResult, score_guess
+import pygame
+
+from wordle.game import GuessResult, WordleGame, score_guess
+from wordle.players import Player
 
 REPEAT_PENALTY = 0.5
 
@@ -36,7 +39,7 @@ def _best_guess(candidates: list[str]) -> str:
     return max(candidates, key=lambda w: (score(w), w))
 
 
-class FrequencySolver:
+class BaseModelSolver:
     def __init__(self, words: list[str]) -> None:
         self._words = [w.lower() for w in words]
 
@@ -45,3 +48,18 @@ class FrequencySolver:
         if len(candidates) == 1:
             return candidates[0]
         return _best_guess(candidates)
+
+
+class BaseModelPlayer(Player):
+    name = "Model 1: Base"
+
+    def __init__(self, words: list[str]) -> None:
+        self._solver = BaseModelSolver(words)
+
+    def handle_event(self, event: pygame.event.Event, game: WordleGame) -> str | None:
+        return None
+
+    def tick(self, game: WordleGame) -> str | None:
+        if game.is_over:
+            return None
+        return self._solver.next_guess(game.history)
