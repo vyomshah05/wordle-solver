@@ -10,6 +10,7 @@ from wordle.game import WordleGame
 PLAYER_MODES: list[tuple[str, str, bool]] = [
     ("human", "Human", True),
     ("model1", "Model 1", True),
+    ("rl", "RL", True),
     ("model2", "Model 2", False),
     ("model3", "Model 3", False),
 ]
@@ -68,9 +69,13 @@ class HumanPlayer(Player):
         return None
 
 
-def make_player(mode_id: str, words: list[str]) -> Player:
+def make_player(mode_id: str, words: list[str], *, rl_checkpoint: str | None = None) -> Player:
     if mode_id == "human":
         return HumanPlayer()
+    if mode_id == "rl":
+        from rl.player import RLPlayer
+
+        return RLPlayer(words, checkpoint=rl_checkpoint)
     if mode_id == "model1":
         from wordle.solvers.model1 import FrequencySolver
 

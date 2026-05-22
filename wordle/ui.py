@@ -116,7 +116,7 @@ class WordleUI:
     def _toast(self, text: str) -> None:
         self.toast = Toast(text=text, expires_at=pygame.time.get_ticks() + TOAST_DURATION_MS)
 
-    def set_player(self, mode_id: str) -> None:
+    def set_player(self, mode_id: str, *, rl_checkpoint: str | None = None) -> None:
         mode = next((m for m in PLAYER_MODES if m[0] == mode_id), None)
         if mode is None or not mode[2]:
             raise ValueError(f"Player not available: {mode_id!r}")
@@ -125,9 +125,12 @@ class WordleUI:
         if mode_id == "human":
             self.active_player = self.human
         else:
-            if mode_id not in self._solver_players:
-                self._solver_players[mode_id] = make_player(mode_id, self.answers)
-            self.active_player = self._solver_players[mode_id]
+            cache_key = mode_id if mode_id != "rl" else f"rl:{rl_checkpoint or 'default'}"
+            if cache_key not in self._solver_players:
+                self._solver_players[cache_key] = make_player(
+                    mode_id, self.answers, rl_checkpoint=rl_checkpoint
+                )
+            self.active_player = self._solver_players[cache_key]
 
     def _menu_rect(self) -> pygame.Rect:
         return pygame.Rect(
