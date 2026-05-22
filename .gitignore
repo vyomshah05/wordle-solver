@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Entropy solver cache artifacts
+wordle/entropy_solver/cache/*.npy
+wordle/entropy_solver/cache/*.json
+wordle/entropy_solver/cache/*.hash
+
+# Simulation results
+results/*.json

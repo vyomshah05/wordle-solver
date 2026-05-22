@@ -40,10 +40,12 @@ the answer can be any of the ~13,000 valid 5-letter words.
 
 ## Plugging in a model
 
-The solver lands by:
+The Model toggle is wired to an information-theoretic entropy solver.
 
-1. Implementing `ModelPlayer` in [wordle/players.py](wordle/players.py) so its
-   constructor stops raising and `tick(game)` returns a guess string when the
-   model is ready to commit one.
-2. The UI already calls `active_player.tick(...)` every frame and submits any
-   non-`None` return, so no UI changes should be needed.
+### Entropy solver
+
+- First run builds an N×N pattern matrix (~1 min, ~113 MB) and an opener
+  cache; subsequent runs load from `wordle/entropy_solver/cache/` in under
+  5 s. Delete the cache folder to force a rebuild.
+- Run a full benchmark: `python scripts/run_entropy_simulation.py --sample 500 --seed 42`
+- Tests: `pytest tests/`

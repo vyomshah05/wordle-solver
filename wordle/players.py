@@ -75,20 +75,27 @@ class HumanPlayer(Player):
 
 
 class ModelPlayer(Player):
-    """Stub for the future LLM-driven player.
-
-    Constructor intentionally raises so a half-wired model can't ship.
-    Once the LLM is connected, override `tick(game)` to return a guess
-    string when the model is ready to commit one.
-    """
-
     name = "Model"
 
     def __init__(self) -> None:
-        raise NotImplementedError(
-            "ModelPlayer is not wired up yet. The UI exposes a toggle button "
-            "for it, but the LLM integration lands in a follow-up step."
-        )
+        from wordle.words import load_words
+        from wordle.entropy_solver import EntropySolver
+        print("Building/loading pattern matrix (~1 min on first run)...", flush=True)
+        self._solver = EntropySolver(load_words())
+        self._last_handled_history_len = -1
 
     def handle_event(self, event: pygame.event.Event, game: WordleGame) -> Optional[str]:
+        return None
+
+    def tick(self, game: WordleGame) -> Optional[str]:
+        if game.is_over:
+            return None
+        n = len(game.history)
+        if n < self._last_handled_history_len:
+            self._solver.reset()
+            self._last_handled_history_len = -1
+        if n > self._last_handled_history_len:
+            guess = self._solver.choose_guess(game.history)
+            self._last_handled_history_len = n
+            return guess
         return None
