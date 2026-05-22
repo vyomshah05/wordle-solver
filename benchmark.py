@@ -4,7 +4,7 @@ import argparse
 import statistics
 import time
 
-from solvers.base_model import BaseModelSolver
+from base_model.base_model import BaseModelSolver
 from wordle.game import score_guess
 from wordle.words import load_words
 

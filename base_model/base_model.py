@@ -63,3 +63,6 @@ class BaseModelPlayer(Player):
         if game.is_over:
             return None
         return self._solver.next_guess(game.history)
+
+
+__all__ = ["BaseModelSolver", "BaseModelPlayer", "filter_candidates"]

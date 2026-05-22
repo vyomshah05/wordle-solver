@@ -72,7 +72,7 @@ def make_player(mode_id: str, words: list[str], *, rl_checkpoint: str | None = N
     if mode_id == "human":
         return HumanPlayer()
     if mode_id == "base_model":
-        from solvers.base_model import BaseModelPlayer
+        from base_model.base_model import BaseModelPlayer
 
         return BaseModelPlayer(words)
     if mode_id == "rl":
