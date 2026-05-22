@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import pygame
 
 from .game import GuessResult, InvalidGuess, LetterState, WordleGame, keyboard_state
-from .players import HumanPlayer, ModelPlayer, Player
+from .players import PLAYER_MODES, HumanPlayer, Player, make_player
 
 # --- Layout ---
 WINDOW_W, WINDOW_H = 500, 760
@@ -42,6 +42,8 @@ TOAST_BG = (26, 26, 27)
 BUTTON_BG = (240, 240, 240)
 BUTTON_BG_ACTIVE = (106, 170, 100)
 BUTTON_BORDER = (180, 180, 180)
+MENU_DISABLED_BG = (245, 245, 245)
+MENU_ITEM_H = 28
 
 STATE_COLORS = {
     LetterState.CORRECT: COLOR_CORRECT,
@@ -52,6 +54,8 @@ STATE_COLORS = {
 REVEAL_PER_TILE_MS = 250
 SHAKE_DURATION_MS = 350
 TOAST_DURATION_MS = 1500
+# Wait for tile reveal before the solver submits its next guess.
+MODEL_GUESS_PAUSE_MS = 400
 
 
 @dataclass
@@ -90,7 +94,11 @@ class WordleUI:
         self.shake: Shake | None = None
         self.toast: Toast | None = None
 
-        self.toggle_rect = pygame.Rect(WINDOW_W - 150, 14, 135, 32)
+        self.selected_player_id = "human"
+        self.player_menu_open = False
+        self.dropdown_rect = pygame.Rect(WINDOW_W - 168, 14, 153, 32)
+        self._menu_hitboxes: list[tuple[pygame.Rect, tuple[str, str, bool]]] = []
+        self._solver_players: dict[str, Player] = {}
         self._key_rects: list[tuple[pygame.Rect, str]] = []
 
     # --- Game lifecycle ---
@@ -108,18 +116,58 @@ class WordleUI:
     def _toast(self, text: str) -> None:
         self.toast = Toast(text=text, expires_at=pygame.time.get_ticks() + TOAST_DURATION_MS)
 
-    # --- Player toggle ---
-    def _toggle_player(self) -> None:
-        if isinstance(self.active_player, HumanPlayer):
-            try:
-                self.active_player = ModelPlayer()
-                self._toast("Model mode (not wired yet)")
-            except NotImplementedError as e:
-                self._toast("Model not available yet")
-                self.active_player = self.human
-        else:
+    def set_player(self, mode_id: str, *, rl_checkpoint: str | None = None) -> None:
+        mode = next((m for m in PLAYER_MODES if m[0] == mode_id), None)
+        if mode is None or not mode[2]:
+            raise ValueError(f"Player not available: {mode_id!r}")
+        self.selected_player_id = mode_id
+        self.player_menu_open = False
+        if mode_id == "human":
             self.active_player = self.human
-            self._toast("Human mode")
+        else:
+            cache_key = mode_id if mode_id != "rl" else f"rl:{rl_checkpoint or 'default'}"
+            if cache_key not in self._solver_players:
+                self._solver_players[cache_key] = make_player(
+                    mode_id, self.answers, rl_checkpoint=rl_checkpoint
+                )
+            self.active_player = self._solver_players[cache_key]
+
+    def _menu_rect(self) -> pygame.Rect:
+        return pygame.Rect(
+            self.dropdown_rect.x,
+            self.dropdown_rect.bottom + 2,
+            self.dropdown_rect.width,
+            len(PLAYER_MODES) * MENU_ITEM_H,
+        )
+
+    def _handle_player_dropdown_click(self, pos: tuple[int, int]) -> bool:
+        menu_rect = self._menu_rect()
+        dropdown_area = self.dropdown_rect.union(menu_rect) if self.player_menu_open else self.dropdown_rect
+
+        if self.player_menu_open:
+            for rect, (mode_id, label, available) in self._menu_hitboxes:
+                if rect.collidepoint(pos):
+                    if available:
+                        self.set_player(mode_id)
+                        self._toast(
+                            f"{label} — watch it play" if mode_id != "human" else "Human mode"
+                        )
+                    return True
+            if not dropdown_area.collidepoint(pos):
+                self.player_menu_open = False
+            return True
+
+        if self.dropdown_rect.collidepoint(pos):
+            self.player_menu_open = True
+            return True
+        return False
+
+    def _model_ready_to_guess(self) -> bool:
+        if self.last_submit_at is None:
+            return True
+        reveal_ms = WordleGame.WORD_LENGTH * REVEAL_PER_TILE_MS
+        elapsed = pygame.time.get_ticks() - self.last_submit_at
+        return elapsed >= reveal_ms + MODEL_GUESS_PAUSE_MS
 
     # --- Main loop ---
     def run(self) -> None:
@@ -144,8 +192,10 @@ class WordleUI:
                     continue
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if self.toggle_rect.collidepoint(event.pos):
-                        self._toggle_player()
+                    if self._handle_player_dropdown_click(event.pos):
+                        continue
+                    if self.player_menu_open:
+                        self.player_menu_open = False
                         continue
                     if self._handle_key_click(event.pos):
                         continue
@@ -153,11 +203,11 @@ class WordleUI:
                 if not self.game.is_over:
                     self._dispatch_to_player(event)
 
-            # Autonomous tick (will be relevant once a model is wired up)
-            if not self.game.is_over:
-                guess = self.active_player.tick(self.game)
-                if guess is not None:
-                    self._try_submit(guess)
+            if not self.game.is_over and not isinstance(self.active_player, HumanPlayer):
+                if self._model_ready_to_guess():
+                    guess = self.active_player.tick(self.game)
+                    if guess is not None:
+                        self._try_submit(guess)
 
             self._draw()
             pygame.display.flip()
@@ -194,7 +244,12 @@ class WordleUI:
 
         self.last_submit_at = pygame.time.get_ticks()
         if self.game.is_won:
-            self._toast("You got it!")
+            won_by = (
+                f"{self.active_player.name} solved it!"
+                if not isinstance(self.active_player, HumanPlayer)
+                else "You got it!"
+            )
+            self._toast(won_by)
         elif self.game.is_lost:
             self._toast(f"The word was: {self.game.answer.upper()}")
 
@@ -205,6 +260,7 @@ class WordleUI:
         self._draw_board()
         self._draw_keyboard()
         self._draw_status()
+        self._draw_player_dropdown()
         self._draw_toast()
 
     def _draw_header(self) -> None:
@@ -212,15 +268,68 @@ class WordleUI:
         title = self.font_title.render("Wordle", True, TEXT)
         self.screen.blit(title, title.get_rect(center=(WINDOW_W // 2, HEADER_H // 2)))
 
-        # Toggle button
+    def _draw_player_dropdown(self) -> None:
         is_model = not isinstance(self.active_player, HumanPlayer)
         bg = BUTTON_BG_ACTIVE if is_model else BUTTON_BG
-        pygame.draw.rect(self.screen, bg, self.toggle_rect, border_radius=6)
-        pygame.draw.rect(self.screen, BUTTON_BORDER, self.toggle_rect, 1, border_radius=6)
+        pygame.draw.rect(self.screen, bg, self.dropdown_rect, border_radius=6)
+        pygame.draw.rect(self.screen, BUTTON_BORDER, self.dropdown_rect, 1, border_radius=6)
+
         label = f"Player: {self.active_player.name}"
         text_color = (255, 255, 255) if is_model else TEXT
         text = self.font_small.render(label, True, text_color)
-        self.screen.blit(text, text.get_rect(center=self.toggle_rect.center))
+        text_rect = text.get_rect(midleft=(self.dropdown_rect.x + 10, self.dropdown_rect.centery))
+        self.screen.blit(text, text_rect)
+
+        arrow = self.font_small.render("▼" if not self.player_menu_open else "▲", True, text_color)
+        self.screen.blit(
+            arrow,
+            arrow.get_rect(midright=(self.dropdown_rect.right - 8, self.dropdown_rect.centery)),
+        )
+
+        if not self.player_menu_open:
+            return
+
+        menu_rect = self._menu_rect()
+        pygame.draw.rect(self.screen, BG, menu_rect, border_radius=6)
+        pygame.draw.rect(self.screen, BUTTON_BORDER, menu_rect, 1, border_radius=6)
+
+        self._menu_hitboxes = []
+        for i, mode in enumerate(PLAYER_MODES):
+            mode_id, mode_label, available = mode
+            item_rect = pygame.Rect(
+                menu_rect.x,
+                menu_rect.y + i * MENU_ITEM_H,
+                menu_rect.width,
+                MENU_ITEM_H,
+            )
+            self._menu_hitboxes.append((item_rect, mode))
+
+            if mode_id == self.selected_player_id:
+                item_bg = BUTTON_BG_ACTIVE
+                item_color = (255, 255, 255)
+            elif available:
+                item_bg = BUTTON_BG
+                item_color = TEXT
+            else:
+                item_bg = MENU_DISABLED_BG
+                item_color = TEXT_MUTED
+
+            pygame.draw.rect(self.screen, item_bg, item_rect)
+            if i > 0:
+                pygame.draw.line(
+                    self.screen,
+                    BUTTON_BORDER,
+                    (item_rect.left + 6, item_rect.top),
+                    (item_rect.right - 6, item_rect.top),
+                    1,
+                )
+
+            suffix = "" if available else " (soon)"
+            item_text = self.font_small.render(mode_label + suffix, True, item_color)
+            self.screen.blit(
+                item_text,
+                item_text.get_rect(midleft=(item_rect.x + 10, item_rect.centery)),
+            )
 
     def _draw_board(self) -> None:
         history = self.game.history
